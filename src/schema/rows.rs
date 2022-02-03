@@ -1,18 +1,18 @@
 use std::fmt;
 
-use num_traits::FromPrimitive;
 use byteorder::{ByteOrder, LittleEndian};
+use num_traits::FromPrimitive;
 
-use crate::{Result, Cache, ResolveToTypeDef};
-use crate::core::db::CodedIndex;
 use crate::core::columns::{Col0, Col1, Col2, Col3, Col4, Col5};
+use crate::core::db::CodedIndex;
 use crate::core::table::{Row, TableRowIterator};
 use crate::core::ByteView;
 use crate::schema;
+use crate::schema::custom_attributes::CustomAttributeSig;
+use crate::schema::flags::*;
 use crate::schema::marker;
 use crate::schema::signatures::*;
-use crate::schema::flags::*;
-use crate::schema::custom_attributes::CustomAttributeSig;
+use crate::{Cache, ResolveToTypeDef, Result};
 
 macro_rules! row_type {
     ($ty:ident) => {
@@ -26,7 +26,6 @@ macro_rules! row_type {
             }
         }
 
-        
         impl<'db> crate::AssemblyAccess for $ty<'db> {
             fn get_assembly(&self) -> Option<schema::Assembly> {
                 self.0.m_table.db.get_assembly()
@@ -36,7 +35,7 @@ macro_rules! row_type {
                 self.0.m_table.db.assembly_name()
             }
         }
-    }
+    };
 }
 
 row_type!(Assembly);
@@ -93,7 +92,8 @@ impl<'db> Assembly<'db> {
     }
 
     pub fn custom_attributes(&self) -> Result<TableRowIterator<'db, marker::CustomAttribute>> {
-        self.0.get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
+        self.0
+            .get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
     }
 }
 
@@ -126,7 +126,8 @@ impl<'db> AssemblyRef<'db> {
     }
 
     pub fn custom_attributes(&self) -> Result<TableRowIterator<'db, marker::CustomAttribute>> {
-        self.0.get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
+        self.0
+            .get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
     }
 }
 
@@ -148,7 +149,8 @@ impl<'db> ClassLayout<'db> {
 // ECMA-335, II.22.9
 impl<'db> Constant<'db> {
     pub fn type_(&self) -> Result<super::ConstantType> {
-        <super::ConstantType as FromPrimitive>::from_u16(self.0.get_value::<Col0, _>()?).ok_or_else(|| "Invalid ConstantType".into())
+        <super::ConstantType as FromPrimitive>::from_u16(self.0.get_value::<Col0, _>()?)
+            .ok_or_else(|| "Invalid ConstantType".into())
     }
 
     pub fn parent(&self) -> Result<Option<super::HasConstant<'db>>> {
@@ -156,9 +158,12 @@ impl<'db> Constant<'db> {
     }
 
     pub fn value(&self) -> Result<super::FieldInit> {
-        use super::{ConstantType, FieldInit};
         use super::PrimitiveValue::*;
-        let bytes = self.0.get_blob::<Col2>()?.expect("Constant value blob was NULL");
+        use super::{ConstantType, FieldInit};
+        let bytes = self
+            .0
+            .get_blob::<Col2>()?
+            .expect("Constant value blob was NULL");
         Ok(match self.type_()? {
             ConstantType::Boolean => FieldInit::Primitive(Boolean(bytes[0] != 0)),
             ConstantType::Char => FieldInit::Primitive(Char(LittleEndian::read_u16(bytes))),
@@ -175,10 +180,13 @@ impl<'db> Constant<'db> {
             ConstantType::String => {
                 let string = match bytes.as_string(0) {
                     None => None,
-                    Some(s) => Some(std::str::from_utf8(s).map_err(|_| crate::DecodeError("Invalid UTF8 in constant value"))?)
+                    Some(s) => Some(
+                        std::str::from_utf8(s)
+                            .map_err(|_| crate::DecodeError("Invalid UTF8 in constant value"))?,
+                    ),
                 };
                 FieldInit::String(string)
-            },
+            }
             ConstantType::Class => {
                 assert_eq!(LittleEndian::read_u32(bytes), 0);
                 FieldInit::NullRef
@@ -190,11 +198,17 @@ impl<'db> Constant<'db> {
 // ECMA-335, II.22.10
 impl<'db> CustomAttribute<'db> {
     pub fn parent(&self) -> Result<super::HasCustomAttribute<'db>> {
-        Ok(self.0.get_coded_index::<Col0, super::HasCustomAttribute>()?.expect("Key column must not be NULL"))
+        Ok(self
+            .0
+            .get_coded_index::<Col0, super::HasCustomAttribute>()?
+            .expect("Key column must not be NULL"))
     }
 
     pub fn type_(&self) -> Result<super::CustomAttributeType<'db>> {
-        Ok(self.0.get_coded_index::<Col1, super::CustomAttributeType>()?.expect("CustomAttribute Type column must not be NULL"))
+        Ok(self
+            .0
+            .get_coded_index::<Col1, super::CustomAttributeType>()?
+            .expect("CustomAttribute Type column must not be NULL"))
     }
 
     pub fn value<'c: 'db>(&self, cache: &Cache<'c>) -> Result<CustomAttributeSig<'db>> {
@@ -204,7 +218,7 @@ impl<'db> CustomAttribute<'db> {
                 let ctor = self.type_()?;
                 let method_sig = match ctor {
                     super::CustomAttributeType::MemberRef(ref mr) => mr.method_signature(),
-                    super::CustomAttributeType::MethodDef(ref md) => md.signature()
+                    super::CustomAttributeType::MethodDef(ref md) => md.signature(),
                 }?;
                 CustomAttributeSig::parse(blob, self.0.m_table.db, cache, &method_sig)
             }
@@ -217,21 +231,21 @@ impl<'db> ResolveToTypeDef<'db> for CustomAttribute<'db> {
         fn inner<'db>(ca: &CustomAttribute<'db>) -> Result<(&'db str, &'db str)> {
             let ctor = ca.type_()?;
             Ok(match ctor {
-                super::CustomAttributeType::MemberRef(ref mr) => {
-                    match mr.class()? {
-                        super::MemberRefParent::TypeDef(ref td) => td.namespace_name_pair(),
-                        super::MemberRefParent::TypeRef(ref tr) => tr.namespace_name_pair(),
-                        _ => return Err("A CustomAttribute MemberRef should only be a TypeDef or TypeRef".into())
+                super::CustomAttributeType::MemberRef(ref mr) => match mr.class()? {
+                    super::MemberRefParent::TypeDef(ref td) => td.namespace_name_pair(),
+                    super::MemberRefParent::TypeRef(ref tr) => tr.namespace_name_pair(),
+                    _ => {
+                        return Err(
+                            "A CustomAttribute MemberRef should only be a TypeDef or TypeRef"
+                                .into(),
+                        )
                     }
                 },
-                super::CustomAttributeType::MethodDef(ref md) => unimplemented!() // md.parent()?.namespace_name_pair()
+                super::CustomAttributeType::MethodDef(ref md) => unimplemented!(), // md.parent()?.namespace_name_pair()
             })
         }
 
-        match inner(self) {
-            Ok(result) => result,
-            Err(_) => ("", "")
-        }
+        inner(self).unwrap_or(("", ""))
     }
 }
 
@@ -252,14 +266,16 @@ impl<'db> Event<'db> {
     }
 
     pub fn custom_attributes(&self) -> Result<TableRowIterator<'db, marker::CustomAttribute>> {
-        self.0.get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
+        self.0
+            .get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
     }
 }
 
 // ECMA-335, II.22.14
 impl<'db> ExportedType<'db> {
     pub fn custom_attributes(&self) -> Result<TableRowIterator<'db, marker::CustomAttribute>> {
-        self.0.get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
+        self.0
+            .get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
     }
 }
 
@@ -274,15 +290,23 @@ impl<'db> Field<'db> {
     }
 
     pub fn signature(&self) -> Result<FieldSig<'db>> {
-        FieldSig::parse(&mut self.0.get_blob::<Col2>()?.expect("Field signature blob was NULL"), self.0.m_table.db)
+        FieldSig::parse(
+            &mut self
+                .0
+                .get_blob::<Col2>()?
+                .expect("Field signature blob was NULL"),
+            self.0.m_table.db,
+        )
     }
 
     pub fn constant(&self) -> Result<Option<Constant<'db>>> {
-        self.0.get_single_by_key::<marker::Constant>(super::HasConstant::encode(self))
+        self.0
+            .get_single_by_key::<marker::Constant>(super::HasConstant::encode(self))
     }
 
     pub fn custom_attributes(&self) -> Result<TableRowIterator<'db, marker::CustomAttribute>> {
-        self.0.get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
+        self.0
+            .get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
     }
 }
 
@@ -304,7 +328,8 @@ impl<'db> FieldRVA<'db> {
 // ECMA-335, II.22.19
 impl<'db> File<'db> {
     pub fn custom_attributes(&self) -> Result<TableRowIterator<'db, marker::CustomAttribute>> {
-        self.0.get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
+        self.0
+            .get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
     }
 }
 
@@ -327,14 +352,16 @@ impl<'db> GenericParam<'db> {
     }
 
     pub fn custom_attributes(&self) -> Result<TableRowIterator<'db, marker::CustomAttribute>> {
-        self.0.get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
+        self.0
+            .get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
     }
 }
 
 // ECMA-335, II.22.21
 impl<'db> GenericParamConstraint<'db> {
     pub fn custom_attributes(&self) -> Result<TableRowIterator<'db, marker::CustomAttribute>> {
-        self.0.get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
+        self.0
+            .get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
     }
 }
 
@@ -346,21 +373,26 @@ impl<'db> ImplMap<'db> {
 // ECMA-335, II.22.23
 impl<'db> InterfaceImpl<'db> {
     pub fn custom_attributes(&self) -> Result<TableRowIterator<'db, marker::CustomAttribute>> {
-        self.0.get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
+        self.0
+            .get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
     }
 }
 
 // ECMA-335, II.22.24
 impl<'db> ManifestResource<'db> {
     pub fn custom_attributes(&self) -> Result<TableRowIterator<'db, marker::CustomAttribute>> {
-        self.0.get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
+        self.0
+            .get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
     }
 }
 
 // ECMA-335, II.22.25
 impl<'db> MemberRef<'db> {
     pub fn class(&self) -> Result<super::MemberRefParent<'db>> {
-        Ok(self.0.get_coded_index::<Col0, super::MemberRefParent>()?.expect("MemberRef Class column must not be NULL"))
+        Ok(self
+            .0
+            .get_coded_index::<Col0, super::MemberRefParent>()?
+            .expect("MemberRef Class column must not be NULL"))
     }
 
     pub fn name(&self) -> Result<&'db str> {
@@ -369,11 +401,18 @@ impl<'db> MemberRef<'db> {
 
     pub fn method_signature(&self) -> Result<MethodDefSig<'db>> {
         // FIXME: this could also be a field signature (FieldSig) ...
-        MethodDefSig::parse(&mut self.0.get_blob::<Col2>()?.expect("MemberRef signature blob was NULL"), self.0.m_table.db)
+        MethodDefSig::parse(
+            &mut self
+                .0
+                .get_blob::<Col2>()?
+                .expect("MemberRef signature blob was NULL"),
+            self.0.m_table.db,
+        )
     }
 
     pub fn custom_attributes(&self) -> Result<TableRowIterator<'db, marker::CustomAttribute>> {
-        self.0.get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
+        self.0
+            .get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
     }
 }
 
@@ -395,7 +434,13 @@ impl<'db> MethodDef<'db> {
     }
 
     pub fn signature(&self) -> Result<MethodDefSig<'db>> {
-        MethodDefSig::parse(&mut self.0.get_blob::<Col4>()?.expect("MethodDef signature blob was NULL"), self.0.m_table.db)
+        MethodDefSig::parse(
+            &mut self
+                .0
+                .get_blob::<Col4>()?
+                .expect("MethodDef signature blob was NULL"),
+            self.0.m_table.db,
+        )
     }
 
     pub fn param_list(&self) -> Result<TableRowIterator<'db, marker::Param>> {
@@ -403,7 +448,8 @@ impl<'db> MethodDef<'db> {
     }
 
     pub fn custom_attributes(&self) -> Result<TableRowIterator<'db, marker::CustomAttribute>> {
-        self.0.get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
+        self.0
+            .get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
     }
 }
 
@@ -430,7 +476,8 @@ impl<'db> MethodSemantics<'db> {
 // ECMA-335, II.22.29
 impl<'db> MethodSpec<'db> {
     pub fn custom_attributes(&self) -> Result<TableRowIterator<'db, marker::CustomAttribute>> {
-        self.0.get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
+        self.0
+            .get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
     }
 }
 
@@ -441,14 +488,16 @@ impl<'db> Module<'db> {
     }
 
     pub fn custom_attributes(&self) -> Result<TableRowIterator<'db, marker::CustomAttribute>> {
-        self.0.get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
+        self.0
+            .get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
     }
 }
 
 // ECMA-335, II.22.31
 impl<'db> ModuleRef<'db> {
     pub fn custom_attributes(&self) -> Result<TableRowIterator<'db, marker::CustomAttribute>> {
-        self.0.get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
+        self.0
+            .get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
     }
 }
 
@@ -456,7 +505,6 @@ impl<'db> ModuleRef<'db> {
 impl<'db> NestedClass<'db> {
     // TODO
 }
-
 
 // ECMA-335, II.22.33
 impl<'db> Param<'db> {
@@ -473,7 +521,8 @@ impl<'db> Param<'db> {
     }
 
     pub fn custom_attributes(&self) -> Result<TableRowIterator<'db, marker::CustomAttribute>> {
-        self.0.get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
+        self.0
+            .get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
     }
 }
 
@@ -484,7 +533,8 @@ impl<'db> Property<'db> {
     }
 
     pub fn custom_attributes(&self) -> Result<TableRowIterator<'db, marker::CustomAttribute>> {
-        self.0.get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
+        self.0
+            .get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
     }
 }
 
@@ -496,7 +546,8 @@ impl<'db> PropertyMap<'db> {
 // ECMA-335, II.22.36
 impl<'db> StandAloneSig<'db> {
     pub fn custom_attributes(&self) -> Result<TableRowIterator<'db, marker::CustomAttribute>> {
-        self.0.get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
+        self.0
+            .get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
     }
 }
 
@@ -535,7 +586,7 @@ impl<'db> TypeDef<'db> {
                 ("System", "Enum") => Enum,
                 ("System", "ValueType") => Struct,
                 ("System", "MulticastDelegate") => Delegate,
-                _ => Class
+                _ => Class,
             }
         } else {
             Class
@@ -547,7 +598,7 @@ impl<'db> TypeDef<'db> {
         match self.extends() {
             Err(_) => false,
             Ok(None) => false,
-            Ok(Some(t)) => t.namespace_name_pair() == ("System", "Enum")
+            Ok(Some(t)) => t.namespace_name_pair() == ("System", "Enum"),
         }
     }
 
@@ -562,9 +613,12 @@ impl<'db> TypeDef<'db> {
                 debug_assert!(result.is_none());
                 let typ = match field.signature()?.type_() {
                     Type::Primitive(p) => *p,
-                    _ => return Err("enum underlying type must be primitive".into())
+                    _ => return Err("enum underlying type must be primitive".into()),
                 };
-                assert!(match typ { Boolean | Char | I1 | U1 | I2 | U2 | I4 | U4 | I8 | U8 => true, _ => false });
+                assert!(matches!(
+                    typ,
+                    Boolean | Char | I1 | U1 | I2 | U2 | I4 | U4 | I8 | U8
+                ));
                 result = Some(typ);
             }
         }
@@ -574,16 +628,21 @@ impl<'db> TypeDef<'db> {
     pub fn is_interface(&self) -> bool {
         match self.flags() {
             Err(_) => false,
-            Ok(f) => f.semantics() == TypeSemantics::Interface
+            Ok(f) => f.semantics() == TypeSemantics::Interface,
         }
     }
 
     pub fn custom_attributes(&self) -> Result<TableRowIterator<'db, marker::CustomAttribute>> {
-        self.0.get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
+        self.0
+            .get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
     }
 
     // TODO: implement this for each type that has custom attributes (maybe via trait and blanket impl?)
-    pub fn get_attribute(&self, type_namespace: &str, type_name: &str) -> Result<Option<CustomAttribute>> {
+    pub fn get_attribute(
+        &self,
+        type_namespace: &str,
+        type_name: &str,
+    ) -> Result<Option<CustomAttribute>> {
         for attr in self.custom_attributes()? {
             let pair = attr.namespace_name_pair();
             if pair == (type_namespace, type_name) {
@@ -629,7 +688,8 @@ impl<'db> TypeRef<'db> {
     }
 
     pub fn custom_attributes(&self) -> Result<TableRowIterator<'db, marker::CustomAttribute>> {
-        self.0.get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
+        self.0
+            .get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
     }
 }
 
@@ -652,10 +712,14 @@ impl<'db> fmt::Debug for TypeRef<'db> {
 // ECMA-335, II.22.39
 impl<'db> TypeSpec<'db> {
     pub fn signature(&self) -> Result<TypeSpecSig<'db>> {
-        TypeSpecSig::parse(&mut self.0.get_blob::<Col0>()?.expect("TypeSpec blob was NULL"), self.0.m_table.db)
+        TypeSpecSig::parse(
+            &mut self.0.get_blob::<Col0>()?.expect("TypeSpec blob was NULL"),
+            self.0.m_table.db,
+        )
     }
 
     pub fn custom_attributes(&self) -> Result<TableRowIterator<'db, marker::CustomAttribute>> {
-        self.0.get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
+        self.0
+            .get_list_by_key::<marker::CustomAttribute>(super::HasCustomAttribute::encode(self))
     }
 }

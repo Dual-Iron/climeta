@@ -1,9 +1,9 @@
 use std::fs;
 
-use climeta::{Database, Cache};
-use climeta::schema::{TypeDef, TypeCategory};
+use climeta::schema::{TypeCategory, TypeDef};
+use climeta::{Cache, Database};
 
-fn main() -> Result<(), Box<std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cache = Cache::new();
 
     for entry in fs::read_dir("C:\\Windows\\System32\\WinMetadata")? {

@@ -1,9 +1,9 @@
+use super::TypeDefOrRef;
+use crate::core::db::{CodedIndex, Database};
+use crate::Result;
+use byteorder::{LittleEndian, ReadBytesExt};
 use std::fmt;
 use std::mem;
-use byteorder::{ReadBytesExt, LittleEndian};
-use crate::Result;
-use crate::core::db::{Database, CodedIndex};
-use super::TypeDefOrRef;
 
 pub(crate) fn uncompress_unsigned(cursor: &mut &[u8]) -> Result<u32> {
     let first = cursor.read_u8()?;
@@ -29,7 +29,6 @@ pub(crate) fn uncompress_signed(cursor: &mut &[u8]) -> Result<i32> {
     unimplemented!()
 }
 
-
 #[allow(non_upper_case_globals, dead_code)]
 pub(crate) mod bits {
     pub const CallingConvention_mask: u8 = 0x15; // 10101
@@ -37,7 +36,7 @@ pub(crate) mod bits {
     pub const VARARG: u8 = 0x05; // II.23.2.1
     pub const FIELD: u8 = 0x06; // II.23.2.4
     pub const PROPERTY: u8 = 0x08; // II.23.2.5
-    //pub const PROPERTY: u8 = 0x28; // what about this one? (II.23.2.5)
+                                   //pub const PROPERTY: u8 = 0x28; // what about this one? (II.23.2.5)
     pub const GENERIC: u8 = 0x10; // II.23.2.1
 
     pub const HASTHIS: u8 = 0x20; // II.23.2.1
@@ -80,8 +79,8 @@ pub(crate) mod bits {
     pub const ELEMENT_TYPE_PINNED: u8 = 0x45;
 
     pub const ARG_SYSTEM_TYPE: u8 = 0x50; // System.Type in custom attributes
-    // 0x51 (Boxed object in custom attributes)
-    // 0x52 (Reserved)
+                                          // 0x51 (Boxed object in custom attributes)
+                                          // 0x52 (Reserved)
     pub const ARG_FIELD: u8 = 0x53; // FIELD in custom attributes
     pub const ARG_PROPERTY: u8 = 0x54; //PROPERTY in custom attributes
     pub const ARG_ENUM: u8 = 0x55; // enum in custom attributes
@@ -111,7 +110,7 @@ impl<'db> MethodDefSig<'db> {
         let ret_type = RetType::parse(cur, db)?;
 
         let mut params = Vec::with_capacity(param_count as usize);
-        
+
         for _ in 0..param_count {
             params.push(ParamSig::parse(cur, db)?);
         }
@@ -120,7 +119,7 @@ impl<'db> MethodDefSig<'db> {
             m_initial_byte: initial_byte,
             m_generic_param_count: generic_param_count,
             m_ret_type: ret_type,
-            m_params: params.into_boxed_slice()
+            m_params: params.into_boxed_slice(),
         })
     }
 
@@ -147,14 +146,13 @@ impl<'db> MethodDefSig<'db> {
     pub fn return_type(&self) -> &RetType<'db> {
         &self.m_ret_type
     }
-    
+
     pub fn params(&self) -> &[ParamSig<'db>] {
         &self.m_params
     }
 }
 
 // TODO: impl Debug for MethodDefSig (s.a. II.15.3)
-
 
 // ECMA-335, II.23.2.4
 #[derive(Clone)]
@@ -166,14 +164,16 @@ pub struct FieldSig<'db> {
 impl<'db> FieldSig<'db> {
     pub(crate) fn parse(cur: &mut &'db [u8], db: &'db Database) -> Result<FieldSig<'db>> {
         let call_conv = uncompress_unsigned(cur)?;
-        if call_conv != bits::FIELD as u32 { return Err("FieldSig blob requires FIELD".into()); }
+        if call_conv != bits::FIELD as u32 {
+            return Err("FieldSig blob requires FIELD".into());
+        }
 
         let cmod = CustomMod::parse(cur, db)?;
         let typ = Type::parse(cur, db)?;
 
         Ok(FieldSig {
             m_type: typ,
-            m_cmod: cmod
+            m_cmod: cmod,
         })
     }
 
@@ -191,8 +191,7 @@ impl<'db> FieldSig<'db> {
 #[derive(Clone)]
 pub struct Array<'db> {
     m_type: Box<Type<'db>>,
-    m_cmod: Vec<CustomMod<'db>>
-    // TODO: optional ArrayShape
+    m_cmod: Vec<CustomMod<'db>>, // TODO: optional ArrayShape
 }
 
 impl<'db> Array<'db> {
@@ -201,7 +200,7 @@ impl<'db> Array<'db> {
         let cmod = CustomMod::parse(cur, db)?;
         Ok(Array {
             m_type: Box::new(Type::parse(cur, db)?),
-            m_cmod: cmod
+            m_cmod: cmod,
         })
     }
 
@@ -214,7 +213,6 @@ impl<'db> Array<'db> {
     }
 }
 
-
 impl<'db> fmt::Debug for Array<'db> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         // TODO: is this correct?
@@ -222,18 +220,17 @@ impl<'db> fmt::Debug for Array<'db> {
     }
 }
 
-
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum TypeTag {
     Class,
-    ValueType
+    ValueType,
 }
 
 impl<'db> fmt::Debug for TypeTag {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             TypeTag::ValueType => write!(f, "valuetype"),
-            TypeTag::Class => write!(f, "class")
+            TypeTag::Class => write!(f, "class"),
         }
     }
 }
@@ -241,7 +238,7 @@ impl<'db> fmt::Debug for TypeTag {
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum GenericVarScope {
     Type,
-    Method
+    Method,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -278,7 +275,9 @@ impl PrimitiveType {
             PrimitiveType::U8 => UInt64(cur.read_u64::<LittleEndian>()?),
             PrimitiveType::R4 => Float32(cur.read_f32::<LittleEndian>()?),
             PrimitiveType::R8 => Float64(cur.read_f64::<LittleEndian>()?),
-            PrimitiveType::I | PrimitiveType::U => return Err("Primitive value of type I or U not supported".into())
+            PrimitiveType::I | PrimitiveType::U => {
+                return Err("Primitive value of type I or U not supported".into())
+            }
         })
     }
 }
@@ -301,7 +300,7 @@ impl fmt::Debug for PrimitiveType {
             R4 => write!(f, "float32"),
             R8 => write!(f, "float64"),
             I => write!(f, "native int"),
-            U => write!(f, "native unsigned int")
+            U => write!(f, "native unsigned int"),
         }
     }
 }
@@ -338,20 +337,34 @@ impl<'db> Type<'db> {
             bits::ELEMENT_TYPE_I => Type::Primitive(PrimitiveType::I),
             bits::ELEMENT_TYPE_U => Type::Primitive(PrimitiveType::U),
             bits::ELEMENT_TYPE_ARRAY => unimplemented!(),
-            bits::ELEMENT_TYPE_CLASS => Type::Ref(TypeTag::Class, TypeDefOrRef::decode(uncompress_unsigned(cur)?, db)?.expect("Null type in Class Type"), None),
+            bits::ELEMENT_TYPE_CLASS => Type::Ref(
+                TypeTag::Class,
+                TypeDefOrRef::decode(uncompress_unsigned(cur)?, db)?
+                    .expect("Null type in Class Type"),
+                None,
+            ),
             bits::ELEMENT_TYPE_FNPTR => unimplemented!(),
             bits::ELEMENT_TYPE_GENERICINST => {
                 let (typetag, typ, args) = parse_generic_inst(cur, db)?;
                 Type::Ref(typetag, typ, Some(args))
-            },
-            bits::ELEMENT_TYPE_MVAR => Type::GenericVar(GenericVarScope::Method, uncompress_unsigned(cur)?),
+            }
+            bits::ELEMENT_TYPE_MVAR => {
+                Type::GenericVar(GenericVarScope::Method, uncompress_unsigned(cur)?)
+            }
             bits::ELEMENT_TYPE_OBJECT => Type::Object,
             bits::ELEMENT_TYPE_PTR => unimplemented!(),
             bits::ELEMENT_TYPE_STRING => Type::String,
             bits::ELEMENT_TYPE_SZARRAY => Type::Array(Array::parse_szarray(cur, db)?),
-            bits::ELEMENT_TYPE_VALUETYPE => Type::Ref(TypeTag::ValueType, TypeDefOrRef::decode(uncompress_unsigned(cur)?, db)?.expect("Null type in ValueType Type"), None),
-            bits::ELEMENT_TYPE_VAR => Type::GenericVar(GenericVarScope::Type, uncompress_unsigned(cur)?),
-            _ => return Err("Unexpected element type for Type".into())
+            bits::ELEMENT_TYPE_VALUETYPE => Type::Ref(
+                TypeTag::ValueType,
+                TypeDefOrRef::decode(uncompress_unsigned(cur)?, db)?
+                    .expect("Null type in ValueType Type"),
+                None,
+            ),
+            bits::ELEMENT_TYPE_VAR => {
+                Type::GenericVar(GenericVarScope::Type, uncompress_unsigned(cur)?)
+            }
+            _ => return Err("Unexpected element type for Type".into()),
         })
     }
 
@@ -359,19 +372,23 @@ impl<'db> Type<'db> {
         match self {
             Type::Ref(_, _, Some(generic)) => generic.iter().any(|t| t.contains_generic_var()),
             Type::GenericVar(..) => true,
-            _ => false
+            _ => false,
         }
     }
 }
 
-fn parse_generic_inst<'db>(cur: &mut &'db [u8], db: &'db Database) -> Result<(TypeTag, TypeDefOrRef<'db>, Box<[Type<'db>]>)> {
+fn parse_generic_inst<'db>(
+    cur: &mut &'db [u8],
+    db: &'db Database,
+) -> Result<(TypeTag, TypeDefOrRef<'db>, Box<[Type<'db>]>)> {
     let typetag = match uncompress_unsigned(cur)? as u8 {
         bits::ELEMENT_TYPE_CLASS => TypeTag::Class,
         bits::ELEMENT_TYPE_VALUETYPE => TypeTag::ValueType,
         _ => return Err("Generic type instantiation signatures must begin with either ELEMENT_TYPE_CLASS or ELEMENT_TYPE_VALUE".into())
     };
 
-    let typ = TypeDefOrRef::decode(uncompress_unsigned(cur)?, db)?.expect("Null type in GenericInst arg");
+    let typ =
+        TypeDefOrRef::decode(uncompress_unsigned(cur)?, db)?.expect("Null type in GenericInst arg");
     let arg_count = uncompress_unsigned(cur)?;
     let mut args = Vec::with_capacity(arg_count as usize);
     for _ in 0..arg_count {
@@ -386,7 +403,12 @@ fn fmt_typedeforref<'db>(t: &TypeDefOrRef<'db>, f: &mut fmt::Formatter) -> fmt::
     // FIXME: implement correctly and move to impl Debug for TypeRef ...
     match t {
         TypeDefOrRef::TypeDef(_d) => write!(f, "TYPEDEF"), // TODO
-        TypeDefOrRef::TypeRef(r) => write!(f, "{}.{}", r.type_namespace().map_err(|_| fmt::Error)?, r.type_name().map_err(|_| fmt::Error)?),
+        TypeDefOrRef::TypeRef(r) => write!(
+            f,
+            "{}.{}",
+            r.type_namespace().map_err(|_| fmt::Error)?,
+            r.type_name().map_err(|_| fmt::Error)?
+        ),
         TypeDefOrRef::TypeSpec(_s) => write!(f, "TYPESPEC"), // TODO
     }
 }
@@ -405,7 +427,9 @@ impl<'db> fmt::Debug for Type<'db> {
                     write!(f, "<")?;
                     let mut first = true;
                     for arg in g.iter() {
-                        if !first { write!(f, ", ")?; }
+                        if !first {
+                            write!(f, ", ")?;
+                        }
                         first = false;
                         write!(f, "{:?}", arg)?;
                     }
@@ -416,7 +440,7 @@ impl<'db> fmt::Debug for Type<'db> {
             GenericVar(GenericVarScope::Type, n) => write!(f, "!{}", n),
             GenericVar(GenericVarScope::Method, n) => write!(f, "!!{}", n),
             Object => write!(f, "object"),
-            String => write!(f, "string")
+            String => write!(f, "string"),
         }
     }
 }
@@ -426,7 +450,7 @@ pub enum RetTypeKind<'db> {
     Void,
     Type(Type<'db>),
     TypeByRef(Type<'db>),
-    TypedReference // System.TypedReference
+    TypedReference, // System.TypedReference
 }
 
 impl<'db> fmt::Debug for RetTypeKind<'db> {
@@ -437,7 +461,7 @@ impl<'db> fmt::Debug for RetTypeKind<'db> {
             Void => write!(f, "void")?,
             Type(ref t) => write!(f, "{:?}", t)?,
             TypeByRef(ref t) => write!(f, "{:?}&", t)?,
-            TypedReference => write!(f, "typedref")?
+            TypedReference => write!(f, "typedref")?,
         }
         Ok(())
     }
@@ -454,7 +478,7 @@ impl<'db> RetType<'db> {
     fn parse(cur: &mut &'db [u8], db: &'db Database) -> Result<RetType<'db>> {
         let cmod = CustomMod::parse(cur, db)?;
 
-        let mut cur_clone = cur.clone(); // maybe we need to rewind
+        let mut cur_clone = Clone::clone(cur); // maybe we need to rewind
         let element_type = uncompress_unsigned(cur)?;
         let kind = match element_type as u8 {
             bits::ELEMENT_TYPE_VOID => RetTypeKind::Void,
@@ -468,7 +492,7 @@ impl<'db> RetType<'db> {
 
         Ok(RetType {
             m_cmod: cmod,
-            m_kind: kind
+            m_kind: kind,
         })
     }
 
@@ -485,7 +509,7 @@ impl<'db> RetType<'db> {
 pub enum ParamKind<'db> {
     Type(Type<'db>),
     TypeByRef(Type<'db>),
-    TypedReference // System.TypedReference
+    TypedReference, // System.TypedReference
 }
 
 impl<'db> fmt::Debug for ParamKind<'db> {
@@ -495,7 +519,7 @@ impl<'db> fmt::Debug for ParamKind<'db> {
             // TODO: improve debug printing or remove this
             Type(ref t) => write!(f, "{:?}", t)?,
             TypeByRef(ref t) => write!(f, "byref {:?}", t)?,
-            TypedReference => write!(f, "System.TypedReference")?
+            TypedReference => write!(f, "System.TypedReference")?,
         }
         Ok(())
     }
@@ -512,7 +536,7 @@ impl<'db> ParamSig<'db> {
     fn parse(cur: &mut &'db [u8], db: &'db Database) -> Result<ParamSig<'db>> {
         let cmod = CustomMod::parse(cur, db)?;
 
-        let mut cur_clone = cur.clone(); // maybe we need to rewind
+        let mut cur_clone = Clone::clone(cur); // maybe we need to rewind
         let element_type = uncompress_unsigned(cur)?;
         let kind = match element_type as u8 {
             bits::ELEMENT_TYPE_BYREF => ParamKind::TypeByRef(Type::parse(cur, db)?),
@@ -525,7 +549,7 @@ impl<'db> ParamSig<'db> {
 
         Ok(ParamSig {
             m_cmod: cmod,
-            m_kind: kind
+            m_kind: kind,
         })
     }
 
@@ -541,14 +565,14 @@ impl<'db> ParamSig<'db> {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum CustomModTag {
     Optional,
-    Required
+    Required,
 }
 
 // ECMA-335, II.23.2.7
 #[derive(Clone)]
 pub struct CustomMod<'db> {
     m_tag: CustomModTag,
-    m_type: TypeDefOrRef<'db>
+    m_type: TypeDefOrRef<'db>,
 }
 
 impl<'db> CustomMod<'db> {
@@ -556,19 +580,20 @@ impl<'db> CustomMod<'db> {
         let mut result = Vec::new();
 
         loop {
-            let mut cur_clone = cur.clone();
+            let mut cur_clone = Clone::clone(cur);
             let element_type = uncompress_unsigned(cur)?;
             let tag = match element_type as u8 {
                 bits::ELEMENT_TYPE_CMOD_OPT => CustomModTag::Optional,
                 bits::ELEMENT_TYPE_CMOD_REQD => CustomModTag::Required,
                 _ => {
                     mem::swap(cur, &mut cur_clone); // rewind cursor
-                    break
+                    break;
                 }
             };
             result.push(CustomMod {
                 m_tag: tag,
-                m_type: TypeDefOrRef::decode(uncompress_unsigned(cur)?, db)?.expect("Null type in CustomMod")
+                m_type: TypeDefOrRef::decode(uncompress_unsigned(cur)?, db)?
+                    .expect("Null type in CustomMod"),
             });
         }
 
@@ -587,22 +612,22 @@ impl<'db> CustomMod<'db> {
 // ECMA-335, II.23.2.14 (renamed to prevent name clash with TypeSpec table row)
 #[derive(Clone)]
 pub enum TypeSpecSig<'db> {
-    GenericInst(TypeTag, TypeDefOrRef<'db>, Box<[Type<'db>]>)
+    GenericInst(TypeTag, TypeDefOrRef<'db>, Box<[Type<'db>]>),
 }
 
 impl<'db> TypeSpecSig<'db> {
     pub(crate) fn parse(cur: &mut &'db [u8], db: &'db Database) -> Result<TypeSpecSig<'db>> {
         let element_type = uncompress_unsigned(cur)?;
         match element_type as u8 {
-            bits::ELEMENT_TYPE_PTR | 
-            bits::ELEMENT_TYPE_FNPTR |
-            bits::ELEMENT_TYPE_ARRAY |
-            bits::ELEMENT_TYPE_SZARRAY => unimplemented!(),
+            bits::ELEMENT_TYPE_PTR
+            | bits::ELEMENT_TYPE_FNPTR
+            | bits::ELEMENT_TYPE_ARRAY
+            | bits::ELEMENT_TYPE_SZARRAY => unimplemented!(),
             bits::ELEMENT_TYPE_GENERICINST => {
                 let (typetag, typ, args) = parse_generic_inst(cur, db)?;
                 Ok(TypeSpecSig::GenericInst(typetag, typ, args))
-            },
-            _ => return Err("Unexpected element type for TypeSpec".into())
+            }
+            _ => Err("Unexpected element type for TypeSpec".into()),
         }
     }
 }
@@ -617,7 +642,9 @@ impl<'db> fmt::Debug for TypeSpecSig<'db> {
                 write!(f, "<")?;
                 let mut first = true;
                 for arg in generic.iter() {
-                    if !first { write!(f, ", ")?; }
+                    if !first {
+                        write!(f, ", ")?;
+                    }
                     first = false;
                     write!(f, "{:?}", arg)?;
                 }
@@ -626,7 +653,6 @@ impl<'db> fmt::Debug for TypeSpecSig<'db> {
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -641,8 +667,14 @@ mod tests {
         assert_eq!(uncompress_unsigned(&[0x80, 0x80]).unwrap(), 0x80);
         assert_eq!(uncompress_unsigned(&[0xAE, 0x57]).unwrap(), 0x2E57);
         assert_eq!(uncompress_unsigned(&[0xBF, 0xFF]).unwrap(), 0x3FFF);
-        assert_eq!(uncompress_unsigned(&[0xC0, 0x00, 0x40, 0x00]).unwrap(), 0x4000);
-        assert_eq!(uncompress_unsigned(&[0xDF, 0xFF, 0xFF, 0xFF]).unwrap(), 0x1FFFFFFF);
+        assert_eq!(
+            uncompress_unsigned(&[0xC0, 0x00, 0x40, 0x00]).unwrap(),
+            0x4000
+        );
+        assert_eq!(
+            uncompress_unsigned(&[0xDF, 0xFF, 0xFF, 0xFF]).unwrap(),
+            0x1FFFFFFF
+        );
         assert!(uncompress_unsigned(&[]).is_err());
     }
 

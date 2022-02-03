@@ -1,9 +1,9 @@
 use std::fmt;
 
-use crate::{Result, Cache, ResolveToTypeDef};
+use crate::{Cache, ResolveToTypeDef, Result};
 
-use crate::core::db::{Database, Tables, CodedIndex, CodedIndexEncode};
 use crate::core::columns::DynamicSize;
+use crate::core::db::{CodedIndex, CodedIndexEncode, Database, Tables};
 
 pub mod flags;
 mod rows;
@@ -45,13 +45,13 @@ macro_rules! table_kind {
 }
 
 pub mod marker {
-    use crate::core::table::{Table, Row};
-    use crate::core::db::{TableKind, TableDesc, TableDescWithKey};
-    use crate::core::columns::{FixedSize2, FixedSize4, FixedSize8, DynamicSize};
+    use crate::core::columns::{DynamicSize, FixedSize2, FixedSize4, FixedSize8};
+    use crate::core::db::{TableDesc, TableDescWithKey, TableKind};
+    use crate::core::table::{Row, Table};
 
     table_kind!(Assembly [FixedSize4, FixedSize8, FixedSize4, DynamicSize, DynamicSize, DynamicSize]);
     table_kind!(AssemblyOS [FixedSize4, FixedSize4, FixedSize4]);
-    table_kind!(AssemblyProcessor [FixedSize4]);
+    table_kind!(AssemblyProcessor[FixedSize4]);
     table_kind!(AssemblyRef [FixedSize8, FixedSize4, DynamicSize, DynamicSize, DynamicSize, DynamicSize]);
     table_kind!(AssemblyRefOS [FixedSize4, FixedSize4, FixedSize4, DynamicSize]);
     table_kind!(AssemblyRefProcessor [FixedSize4, DynamicSize]);
@@ -78,15 +78,15 @@ pub mod marker {
     table_kind!(MethodSemantics [FixedSize2, DynamicSize, DynamicSize] key Col2 /*Association*/);
     table_kind!(MethodSpec [DynamicSize, DynamicSize]);
     table_kind!(Module [FixedSize2, DynamicSize, DynamicSize, DynamicSize, DynamicSize]);
-    table_kind!(ModuleRef [DynamicSize]);
+    table_kind!(ModuleRef[DynamicSize]);
     table_kind!(NestedClass [DynamicSize, DynamicSize] key Col0 /*NestedClass*/);
     table_kind!(Param [FixedSize2, FixedSize2, DynamicSize]);
     table_kind!(Property [FixedSize2, DynamicSize, DynamicSize]);
     table_kind!(PropertyMap [DynamicSize, DynamicSize]);
-    table_kind!(StandAloneSig [DynamicSize]);
+    table_kind!(StandAloneSig[DynamicSize]);
     table_kind!(TypeDef [FixedSize4, DynamicSize, DynamicSize, DynamicSize, DynamicSize, DynamicSize]);
     table_kind!(TypeRef [DynamicSize, DynamicSize, DynamicSize]);
-    table_kind!(TypeSpec [DynamicSize]);
+    table_kind!(TypeSpec[DynamicSize]);
 }
 
 macro_rules! coded_index {
@@ -296,8 +296,7 @@ impl<'db> ResolveToTypeDef<'db> for TypeDefOrRef<'db> {
 }
 
 #[repr(u16)]
-#[derive(FromPrimitive, ToPrimitive)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(FromPrimitive, ToPrimitive, Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ConstantType {
     Boolean = 0x02,
     Char = 0x03,
@@ -312,7 +311,7 @@ pub enum ConstantType {
     Float32 = 0x0c,
     Float64 = 0x0d,
     String = 0x0e,
-    Class = 0x12
+    Class = 0x12,
 }
 
 #[derive(Copy, Clone, PartialEq)]
@@ -346,7 +345,7 @@ impl<'db> fmt::Debug for PrimitiveValue {
             Int64(v) => write!(f, "int64({})", v),
             UInt64(v) => write!(f, "unsigned int64({})", v),
             Float32(v) => write!(f, "float32({})", v),
-            Float64(v) => write!(f, "float64({})", v)
+            Float64(v) => write!(f, "float64({})", v),
         }
     }
 }
@@ -356,7 +355,7 @@ impl<'db> fmt::Debug for PrimitiveValue {
 pub enum FieldInit<'db> {
     Primitive(PrimitiveValue),
     String(Option<&'db str>),
-    NullRef
+    NullRef,
 }
 
 impl<'db> fmt::Debug for FieldInit<'db> {
@@ -376,5 +375,5 @@ pub enum TypeCategory {
     Class,
     Enum,
     Struct,
-    Delegate
+    Delegate,
 }

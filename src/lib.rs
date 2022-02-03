@@ -1,15 +1,16 @@
-#[macro_use] extern crate num_derive;
-use memmap::Mmap;
-use stable_deref_trait::StableDeref;
-use owning_ref::OwningHandle;
+#[macro_use]
+extern crate num_derive;
 use elsa::FrozenVec;
+use memmap::Mmap;
+use owning_ref::OwningHandle;
+use stable_deref_trait::StableDeref;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::error::Error;
-use std::io;
 use std::fmt;
 use std::fs::File;
+use std::io;
 use std::ops::Deref;
 use std::path::Path;
 
@@ -48,7 +49,7 @@ impl From<io::Error> for DecodeError {
 #[derive(Debug)]
 pub enum LoadDatabaseError {
     IoError(io::Error),
-    DecodeError(DecodeError)
+    DecodeError(DecodeError),
 }
 
 impl Error for LoadDatabaseError {
@@ -56,20 +57,18 @@ impl Error for LoadDatabaseError {
         use LoadDatabaseError::*;
         match self {
             IoError(ref err) => Some(err),
-            DecodeError(ref err) => Some(err)
+            DecodeError(ref err) => Some(err),
         }
     }
 }
-
 
 impl fmt::Display for LoadDatabaseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use LoadDatabaseError::*;
         match self {
             IoError(e) => write!(f, "I/O error: {}", e),
-            DecodeError(e) => write!(f, "decode error: {}", e)
+            DecodeError(e) => write!(f, "decode error: {}", e),
         }
-        
     }
 }
 
@@ -85,7 +84,6 @@ impl From<DecodeError> for LoadDatabaseError {
     }
 }
 
-
 type Result<T> = std::result::Result<T, DecodeError>;
 
 pub use crate::core::table::Table;
@@ -94,7 +92,9 @@ struct StableMmap(Mmap);
 
 impl Deref for StableMmap {
     type Target = [u8];
-    fn deref(&self) -> &Self::Target { &self.0 }
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 // The Deref result for Mmap does not depend on the actual location of the
@@ -106,13 +106,15 @@ struct DerefDatabase<'db>(db::Database<'db>);
 
 impl<'db> Deref for DerefDatabase<'db> {
     type Target = db::Database<'db>;
-    fn deref(&self) -> &Self::Target { &self.0 }
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 // Separate type because enum variants are always public
 enum DatabaseInner<'db> {
     Owned(OwningHandle<StableMmap, DerefDatabase<'db>>),
-    Borrowed(db::Database<'db>)
+    Borrowed(db::Database<'db>),
 }
 
 impl<'db> Deref for DatabaseInner<'db> {
@@ -121,11 +123,10 @@ impl<'db> Deref for DatabaseInner<'db> {
         use DatabaseInner::*;
         match self {
             Owned(ref handle) => handle.deref(),
-            Borrowed(ref db) => db
+            Borrowed(ref db) => db,
         }
     }
 }
-
 
 pub struct Database<'db>(DatabaseInner<'db>);
 
@@ -139,11 +140,14 @@ macro_rules! impl_table_access {
             fn get_table(&'db self) -> Table<'db, <schema::$tab<'db> as TableRow>::Kind> {
                 Table {
                     db: self.0.deref(),
-                    table: self.0.deref().get_table_info::<<schema::$tab<'db> as TableRow>::Kind>()
+                    table: self
+                        .0
+                        .deref()
+                        .get_table_info::<<schema::$tab<'db> as TableRow>::Kind>(),
                 }
             }
         }
-    }
+    };
 }
 
 impl_table_access!(TypeRef);
@@ -186,20 +190,24 @@ impl_table_access!(GenericParam);
 impl_table_access!(MethodSpec);
 
 impl<'db> Database<'db> {
-    pub fn from_file<P: AsRef<Path>>(path: P) -> std::result::Result<Database<'db>, LoadDatabaseError> {
+    pub fn from_file<P: AsRef<Path>>(
+        path: P,
+    ) -> std::result::Result<Database<'db>, LoadDatabaseError> {
         let file = File::open(path.as_ref())?;
         let mmap = StableMmap(unsafe { Mmap::map(&file)? });
-        Ok(Database(DatabaseInner::Owned(
-            OwningHandle::try_new(mmap, |ptr: *const [u8]| db::Database::load(unsafe { &(*ptr)[..] }).map(|db| DerefDatabase(db)))?
-        )))
+        Ok(Database(DatabaseInner::Owned(OwningHandle::try_new(
+            mmap,
+            |ptr: *const [u8]| db::Database::load(unsafe { &(*ptr)[..] }).map(DerefDatabase),
+        )?)))
     }
 
-    pub fn from_data<'a>(data: &'a [u8]) -> Result<Database<'a>> {
+    pub fn from_data(data: &[u8]) -> Result<Database<'_>> {
         Ok(Database(DatabaseInner::Borrowed(db::Database::load(data)?)))
     }
 
     pub fn table<T: TableRow>(&'db self) -> Table<'db, T::Kind>
-        where Self: TableAccess<'db, T>
+    where
+        Self: TableAccess<'db, T>,
     {
         self.get_table()
     }
@@ -239,14 +247,14 @@ pub trait TableRowAccess {
 #[derive(Default)]
 pub struct Cache<'db> {
     databases: FrozenVec<Box<Database<'db>>>,
-    namespace_map: RefCell<HashMap<&'db str, MemberCache<'db>>>
+    namespace_map: RefCell<HashMap<&'db str, MemberCache<'db>>>,
 }
 
 impl<'db> Cache<'db> {
     pub fn new() -> Cache<'db> {
         Cache {
             databases: FrozenVec::new(),
-            namespace_map: RefCell::new(HashMap::new())
+            namespace_map: RefCell::new(HashMap::new()),
         }
     }
 
@@ -262,10 +270,17 @@ impl<'db> Cache<'db> {
             // }
 
             let mut map = self.namespace_map.borrow_mut();
-            let members = map.entry(typ.type_namespace().expect("unable to read namespace")).or_insert(MemberCache::default());
-            match members.types.entry(typ.type_name().expect("unable to read type name")) {
-                Occupied(_) => {},
-                Vacant(e) => { e.insert(typ.clone()); }
+            let members = map
+                .entry(typ.type_namespace().expect("unable to read namespace"))
+                .or_insert_with(MemberCache::default);
+            match members
+                .types
+                .entry(typ.type_name().expect("unable to read type name"))
+            {
+                Occupied(_) => {}
+                Vacant(e) => {
+                    e.insert(typ.clone());
+                }
             }
         }
         db
@@ -273,7 +288,8 @@ impl<'db> Cache<'db> {
 
     pub fn find(&self, type_namespace: &str, type_name: &str) -> Option<schema::TypeDef<'db>> {
         let map = self.namespace_map.borrow();
-        map.get(type_namespace).and_then(|ns| ns.types.get(type_name).map(|t| t.clone()))
+        map.get(type_namespace)
+            .and_then(|ns| ns.types.get(type_name).cloned())
     }
 
     pub fn iter(&'db self) -> impl Iterator<Item = &'db Database<'db>> {
@@ -308,7 +324,6 @@ struct MemberCache<'db> {
     types: HashMap<&'db str, schema::TypeDef<'db>>,
 }
 
-
 pub trait ResolveToTypeDef<'db> {
     fn namespace_name_pair(&self) -> (&'db str, &'db str);
     fn resolve<'c: 'db>(&self, cache: &Cache<'c>) -> Option<schema::TypeDef<'db>> {
@@ -320,8 +335,8 @@ pub trait ResolveToTypeDef<'db> {
 impl<'db> ResolveToTypeDef<'db> for &'db str {
     fn namespace_name_pair(&self) -> (&'db str, &'db str) {
         match self.rfind('.') {
-            None => return ("", &self[..]),
-            Some(dot) => (&self[..dot], &self[dot+1 ..])
+            None => ("", &self[..]),
+            Some(dot) => (&self[..dot], &self[dot + 1..]),
         }
     }
 }
